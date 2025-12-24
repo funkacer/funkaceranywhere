@@ -8,4 +8,5 @@
 */__pycache__/*
 /.venv/
 /flask_session/
-store.db
+app.db
+apikey.txt

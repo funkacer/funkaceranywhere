@@ -1,33 +1,8 @@
-# mkdir froshims_flask_app
-# cd froshims_flask_app
-# cp ../my_flask_app/requirements.txt .
-# . ../../bin/activate (. _Git/_test/bin/activate)
-# pip install -r requirements.txt
-# touch app.py
-# mkdir templates
-# touch layout.html index.html
-# flask run
-
-from flask import Flask, render_template, redirect, request, session
-from flask_session import Session
-#from flask_sqlalchemy import SQLAlchemy
-#from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-import sqlite3
-from collections import namedtuple
-# import requests module
 import requests
 import datetime
+import sqlite3
 
-def namedtuple_factory(cursor, row):
-    fields = [column[0] for column in cursor.description]
-    cls = namedtuple("Row", fields)
-    return cls._make(row)
-
-def dict_factory(cursor, row):
-    d = {}
-    for idx, col in enumerate(cursor.description):
-        d[col[0]] = row[idx]
-    return d
+DB = "app.db"
 
 class Weather():
 
@@ -180,109 +155,45 @@ class Weather():
         self.f_temp_kf, self.f_pop, self.f_sys_pod, self.f_dt_txt])
 
 
-app = Flask(__name__)
-#app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
+weathers = []
 
-#app.config["SESSION_PERMANENT"] = False
-#app.config["SESSION_TYPE"] = "filesystem"
-#Session(app)
-
-# pro pythonanywhere:
-#DB = "mysite/app.db"
-# pro localhost:
-DB = "app.db"
-
-# pro pythonanywhere:
-#with open("mysite/apikey.txt") as file:
-# pro localhost:
 with open("apikey.txt") as file:
     apikey = file.read()
 
-@app.route("/")
-def index():
+response = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q=Praha&APPID={apikey}&units=metric')
 
-    # Making a get request
-    weather = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q=Praha&APPID={apikey}&units=metric').json()
-    forecast = requests.get(f'https://api.openweathermap.org/data/2.5/forecast?q=Praha&APPID={apikey}&units=metric').json()
+#print(response.status_code)
 
-    # print response
-    #print(response)
+weather = Weather()
+#print(weather.changeat)
 
-    # print url
-    #print(response.status_code)
+if (response.status_code == 200):
+    weather.fill(response.json())
+    weathers.append(weather)
 
-    con = sqlite3.connect(DB)
-    '''
-    #con.row_factory = sqlite3.Row
-    con.execute(f"delete from weather;")
-    con.commit()
-    con.execute(f"insert into weather (w_lon) values(?);", [1])
-    con.commit()
-    '''
-    cur = con.execute(f"SELECT * FROM weather;")
-    data = cur.fetchall()
-    con.close()
+response = requests.get(f'https://api.openweathermap.org/data/2.5/forecast?q=Praha&APPID={apikey}&units=metric')
 
-    print(weather)
-    print(weather.get('weather')[0].get('main'))
+#print(response.status_code)
 
-    return render_template("index.html", data=data, weather=weather, forecast=forecast)
-
-@app.route("/weather/getweather")
-def getweather():
-
-    weathers = []
-
-    response = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q=Praha&APPID={apikey}&units=metric')
-
-    #print(response.status_code)
-
-    weather = Weather()
-    #print(weather.changeat)
-
-    if (response.status_code == 200):
-        weather.fill(response.json())
+if (response.status_code == 200):
+    data = response.json()
+    data1 = dict((i, data[i]) for i in data if i!='list' and i!='city')
+    data2 = data1 | data.get('city')
+    for i in range(len(data.get('list'))):
+        data3 = data2 | data.get('list')[i]
+        weather = Weather()
+        #print(weather.changeat)
+        weather.fill(data3)
         weathers.append(weather)
 
-    response = requests.get(f'https://api.openweathermap.org/data/2.5/forecast?q=Praha&APPID={apikey}&units=metric')
-
-    #print(response.status_code)
-
-    if (response.status_code == 200):
-        data = response.json()
-        data1 = dict((i, data[i]) for i in data if i!='list' and i!='city')
-        data2 = data1 | data.get('city')
-        for i in range(len(data.get('list'))):
-            data3 = data2 | data.get('list')[i]
-            weather = Weather()
-            #print(weather.changeat)
-            weather.fill(data3)
-            weathers.append(weather)
-
-    con = sqlite3.connect(DB)
-    #con.row_factory = sqlite3.Row
-    con.execute(f"delete from weather;")
-    con.commit()
-    #con.execute(f"insert into weather (w_lon) values(?);", [1])
-    for weather in weathers:
-        weather.write(con)
-    con.commit()
-    cur = con.execute(f"SELECT * FROM weather;")
-    data = cur.fetchall()
-    con.close()
-
-    return render_template("index.html", data=data, weather="", forecast="")
-
-@app.route("/weather/getday")
-def getday():
-    con = sqlite3.connect(DB)
-    con.row_factory = dict_factory #namedtuple_factory #sqlite3.Row
-    
-    cur = con.execute(f"SELECT * FROM weather;")
-    data = cur.fetchall()
-    con.close()
-
-    return render_template("json.html", data=data[0], weather="", forecast="")
-
-if __name__ == '__main__':
-    app.run()
+con = sqlite3.connect(DB)
+#con.row_factory = sqlite3.Row
+con.execute(f"delete from weather;")
+con.commit()
+#con.execute(f"insert into weather (w_lon) values(?);", [1])
+for weather in weathers:
+    weather.write(con)
+con.commit()
+cur = con.execute(f"SELECT * FROM weather;")
+data = cur.fetchall()
+con.close()
